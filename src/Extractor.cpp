@@ -1,15 +1,18 @@
 #include "RangeParser.h"
-#include <fstream>
-#include <string>
+#include "FastScanner.h"
+#include <cstdio>
 
 static bool inside(const GPST& t, const GPST& s, const GPST& e)
 {
     if (t.week < s.week || t.week > e.week)
         return false;
+
     if (t.week == s.week && t.sow < s.sow)
         return false;
+
     if (t.week == e.week && t.sow > e.sow)
         return false;
+
     return true;
 }
 
@@ -18,33 +21,60 @@ int extractRange(const char* input,
                  const GPST& start,
                  const GPST& end)
 {
-    std::ifstream fin(input, std::ios::binary);
-    std::ofstream fout(output, std::ios::binary);
+    FastScanner scanner(input);
 
-    if (!fin || !fout)
+    if (!scanner.valid())
         return -1;
 
-    std::string line;
+    FILE* fout = fopen(output, "wb");
+
+    if (!fout)
+        return -2;
+
+    const char* data = nullptr;
+    size_t length = 0;
+    uint64_t offset = 0;
+
     bool copy = false;
 
-    while (std::getline(fin, line))
+    while (scanner.nextLine(data, length, offset))
     {
         GPST t;
-        if (parseRangeTime(line.c_str(), t))
+
+        bool isRange = false;
+
+        if (length >= 7 && data[0] == '#')
+        {
+            char lineEnd = data[length];
+            const_cast<char*>(data)[length] = '\0';
+            isRange = parseRangeTime(data, t);
+            const_cast<char*>(data)[length] = lineEnd;
+        }
+
+        if (isRange)
         {
             if (inside(t, start, end))
+            {
                 copy = true;
-            else if (copy && (t.week > end.week ||
-                     (t.week == end.week && t.sow > end.sow)))
-                break;
+            }
+            else if (copy)
+            {
+                if (t.week > end.week ||
+                   (t.week == end.week && t.sow > end.sow))
+                {
+                    break;
+                }
+            }
         }
 
         if (copy)
         {
-            fout.write(line.data(), (std::streamsize)line.size());
-            fout.put('\n');
+            fwrite(data, 1, length, fout);
+            fwrite("\n", 1, 1, fout);
         }
     }
+
+    fclose(fout);
 
     return 0;
 }
