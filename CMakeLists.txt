@@ -9,6 +9,7 @@ add_executable(FastExtractor
     src/main.cpp
     src/RangeParser.cpp
     src/Extractor.cpp
+    src/FastExtractByGPST.cpp
     src/GpstLocator.cpp
     src/FastScanner.cpp
     src/FileTimeDetector.cpp
