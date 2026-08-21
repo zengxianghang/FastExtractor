@@ -9,6 +9,8 @@ add_executable(FastExtractor
     src/main.cpp
     src/RangeParser.cpp
     src/Extractor.cpp
+    src/GpstLocator.cpp
+    src/FastScanner.cpp
 )
 
 target_include_directories(FastExtractor PRIVATE include)
