@@ -10,6 +10,7 @@ High performance GPST range extractor for large NovAtel log files.
 - Performs local RANGEA scanning for correction.
 - Uses outward GPST boundaries so boundary data is not accidentally dropped.
 - Copies the selected byte range directly, preserving the original log bytes.
+- Supports automatic output filename generation in the input file directory.
 - C++ implementation with CMake support.
 
 ## Boundary policy
@@ -45,6 +46,8 @@ cmake --build . --config Release
 
 ## Usage
 
+Explicit output filename:
+
 ```bash
 FastExtractor input.log output.log start_week start_sow end_week end_sow
 ```
@@ -54,3 +57,29 @@ Example:
 ```bash
 FastExtractor test.log result.log 2300 345600 2300 346000
 ```
+
+Automatic output filename:
+
+```bash
+FastExtractor input.log start_week start_sow end_week end_sow
+```
+
+The output is stored in the same directory as the input file. The generated filename is:
+
+```text
+<stem>_<startWeek>_<startSow>_<endWeek>_<endSow><extension>
+```
+
+The requested GPST values are used in the filename, formatted to three decimal places. For example:
+
+```bash
+FastExtractor D:\data\test.log 2300 100.4 2300 200.3
+```
+
+generates:
+
+```text
+D:\data\test_2300_100.400_2300_200.300.log
+```
+
+If the input file has no extension, the generated output file also has no extension.
