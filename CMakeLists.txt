@@ -14,6 +14,7 @@ add_executable(FastExtractor
     src/FastScanner.cpp
     src/FileTimeDetector.cpp
     src/TailScanner.cpp
+    src/MetaCache.cpp
 )
 
 target_include_directories(FastExtractor PRIVATE include)
