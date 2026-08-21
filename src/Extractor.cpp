@@ -40,15 +40,11 @@ int extractRange(const char* input,
     while (scanner.nextLine(data, length, offset))
     {
         GPST t;
-
         bool isRange = false;
 
         if (length >= 7 && data[0] == '#')
         {
-            char lineEnd = data[length];
-            const_cast<char*>(data)[length] = '\0';
-            isRange = parseRangeTime(data, t);
-            const_cast<char*>(data)[length] = lineEnd;
+            isRange = parseRangeTimeFast(data, length, t);
         }
 
         if (isRange)
