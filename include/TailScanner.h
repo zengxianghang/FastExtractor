@@ -1,11 +1,5 @@
 #pragma once
 
-#include "RangeParser.h"
-
-struct FileTimeRange
-{
-    GPST start;
-    GPST end;
-};
+#include "FileTimeDetector.h"
 
 bool detectTailRange(const char* filename, FileTimeRange& range);
