@@ -11,6 +11,7 @@ High performance GPST range extractor for large NovAtel log files.
 - Uses outward GPST boundaries so boundary data is not accidentally dropped.
 - Copies the selected byte range directly, preserving the original log bytes.
 - Supports automatic output filename generation in the input file directory.
+- Supports continuous GPST seconds without explicitly supplying GPS week, including cross-week intervals.
 - C++ implementation with CMake support.
 
 ## Boundary policy
@@ -46,7 +47,9 @@ cmake --build . --config Release
 
 ## Usage
 
-Explicit output filename:
+FastExtractor supports four CLI forms.
+
+### Explicit GPS week, explicit output filename
 
 ```bash
 FastExtractor input.log output.log start_week start_sow end_week end_sow
@@ -58,28 +61,67 @@ Example:
 FastExtractor test.log result.log 2300 345600 2300 346000
 ```
 
-Automatic output filename:
+### Explicit GPS week, automatic output filename
 
 ```bash
 FastExtractor input.log start_week start_sow end_week end_sow
 ```
 
-The output is stored in the same directory as the input file. The generated filename is:
+### Continuous GPST seconds, explicit output filename
+
+```bash
+FastExtractor input.log output.log start_sec end_sec
+```
+
+### Continuous GPST seconds, automatic output filename
+
+```bash
+FastExtractor input.log start_sec end_sec
+```
+
+In continuous-seconds mode, the GPS week of the first valid `RANGEA` record is used as the base week. The input seconds may exceed one GPS week (`604800` seconds). Each whole `604800` seconds advances the resolved GPS week by one.
+
+For example, if the input file starts in GPS week `2300`:
+
+```bash
+FastExtractor test.log 10 604810
+```
+
+resolves to:
+
+```text
+Requested seconds: 10.000 ~ 604810.000
+Resolved GPST: 2300 10.000 ~ 2301 10.000
+```
+
+The same rule naturally supports multiple weeks, for example `1209610` resolves to `baseWeek + 2, sow = 10`.
+
+Continuous seconds must satisfy:
+
+```text
+0 <= start_sec <= end_sec
+```
+
+`start_sec == end_sec` is allowed and uses the same outward-boundary extraction policy.
+
+## Automatic output filename
+
+When the output filename is omitted, the output is stored in the same directory as the input file. The generated filename is:
 
 ```text
 <stem>_<startWeek>_<startSow>_<endWeek>_<endSow><extension>
 ```
 
-The requested GPST values are used in the filename, formatted to three decimal places. For example:
+The resolved GPST values are used in the filename, formatted to three decimal places. For example:
 
 ```bash
-FastExtractor D:\data\test.log 2300 100.4 2300 200.3
+FastExtractor D:\data\test.log 10 604810
 ```
 
-generates:
+with base GPS week `2300` generates:
 
 ```text
-D:\data\test_2300_100.400_2300_200.300.log
+D:\data\test_2300_10.000_2301_10.000.log
 ```
 
 If the input file has no extension, the generated output file also has no extension.
