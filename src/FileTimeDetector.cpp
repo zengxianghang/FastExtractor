@@ -1,52 +1,39 @@
 #include "FileTimeDetector.h"
-#include <fstream>
+#include "FastScanner.h"
+#include "TailScanner.h"
 
 bool detectFileTimeRange(const char* filename, FileTimeRange& range)
 {
     range.valid = false;
 
-    std::ifstream fin(filename, std::ios::binary);
-    if(!fin)
+    FastScanner scanner(filename);
+    if (!scanner.valid())
         return false;
 
-    const size_t BUF_SIZE = 16 * 1024 * 1024;
-    char* buf = new char[BUF_SIZE];
-
+    const char* data = nullptr;
+    size_t length = 0;
+    uint64_t offset = 0;
     GPST first{};
-    GPST last{};
     bool foundFirst = false;
 
-    while(fin)
+    while (scanner.nextLine(data, length, offset))
     {
-        fin.read(buf, BUF_SIZE);
-        std::streamsize n = fin.gcount();
-
-        for(std::streamsize i=0;i<n;i++)
+        if (parseRangeTimeFast(data, length, first))
         {
-            if(buf[i]=='#')
-            {
-                GPST t;
-                if(parseRangeTime(buf+i, t))
-                {
-                    if(!foundFirst)
-                    {
-                        first=t;
-                        foundFirst=true;
-                    }
-                    last=t;
-                }
-            }
+            foundFirst = true;
+            break;
         }
     }
 
-    delete [] buf;
+    if (!foundFirst)
+        return false;
 
-    if(foundFirst)
-    {
-        range.start=first;
-        range.end=last;
-        range.valid=true;
-    }
+    FileTimeRange tail{};
+    if (!detectTailRange(filename, tail))
+        return false;
 
-    return range.valid;
+    range.start = first;
+    range.end = tail.end;
+    range.valid = true;
+    return true;
 }
