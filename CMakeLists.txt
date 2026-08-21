@@ -11,6 +11,7 @@ add_executable(FastExtractor
     src/Extractor.cpp
     src/GpstLocator.cpp
     src/FastScanner.cpp
+    src/FileTimeDetector.cpp
 )
 
 target_include_directories(FastExtractor PRIVATE include)
