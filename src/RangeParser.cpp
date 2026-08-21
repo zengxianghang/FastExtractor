@@ -1,45 +1,41 @@
 #include "RangeParser.h"
 #include <cstring>
-#include <cstdlib>
 
-static bool parseIntField(const char* p, int& value)
+static bool parseIntField(const char* data, size_t length, size_t pos, int& value)
 {
+    if (pos >= length || data[pos] < '0' || data[pos] > '9')
+        return false;
+
     value = 0;
-
-    while (*p >= '0' && *p <= '9')
+    while (pos < length && data[pos] >= '0' && data[pos] <= '9')
     {
-        value = value * 10 + (*p - '0');
-        ++p;
+        value = value * 10 + (data[pos] - '0');
+        ++pos;
     }
-
     return true;
 }
 
-static bool parseDoubleField(const char* p, double& value)
+static bool parseDoubleField(const char* data, size_t length, size_t pos, double& value)
 {
+    if (pos >= length || data[pos] < '0' || data[pos] > '9')
+        return false;
+
     value = 0.0;
-
-    double scale = 0.1;
-    bool decimal = false;
-
-    while (*p >= '0' && *p <= '9')
+    while (pos < length && data[pos] >= '0' && data[pos] <= '9')
     {
-        if (decimal)
+        value = value * 10.0 + (data[pos] - '0');
+        ++pos;
+    }
+
+    if (pos < length && data[pos] == '.')
+    {
+        ++pos;
+        double scale = 0.1;
+        while (pos < length && data[pos] >= '0' && data[pos] <= '9')
         {
-            value += (*p - '0') * scale;
+            value += (data[pos] - '0') * scale;
             scale *= 0.1;
-        }
-        else
-        {
-            value = value * 10.0 + (*p - '0');
-        }
-
-        ++p;
-
-        if (*p == '.')
-        {
-            decimal = true;
-            ++p;
+            ++pos;
         }
     }
 
@@ -48,10 +44,11 @@ static bool parseDoubleField(const char* p, double& value)
 
 bool parseRangeTimeFast(const char* data, size_t length, GPST& t)
 {
-    if (length < 7 || std::memcmp(data, "#RANGEA", 7) != 0)
+    if (!data || length < 7 || std::memcmp(data, "#RANGEA", 7) != 0)
         return false;
 
     int field = 0;
+    bool haveWeek = false;
 
     for (size_t i = 0; i < length; ++i)
     {
@@ -59,15 +56,19 @@ bool parseRangeTimeFast(const char* data, size_t length, GPST& t)
             continue;
 
         ++field;
+        const size_t valuePos = i + 1;
 
         if (field == 5)
         {
-            parseIntField(data + i + 1, t.week);
+            if (!parseIntField(data, length, valuePos, t.week))
+                return false;
+            haveWeek = true;
         }
         else if (field == 6)
         {
-            parseDoubleField(data + i + 1, t.sow);
-            return true;
+            if (!haveWeek)
+                return false;
+            return parseDoubleField(data, length, valuePos, t.sow);
         }
     }
 
@@ -76,5 +77,7 @@ bool parseRangeTimeFast(const char* data, size_t length, GPST& t)
 
 bool parseRangeTime(const char* line, GPST& t)
 {
+    if (!line)
+        return false;
     return parseRangeTimeFast(line, std::strlen(line), t);
 }
