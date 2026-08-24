@@ -25,6 +25,25 @@ static bool messageNameEquals(
            data[pos] == '\r' || data[pos] == '\n';
 }
 
+static bool fieldEquals(
+    const char* data,
+    size_t length,
+    size_t pos,
+    const char* value)
+{
+    if (!data || !value || pos >= length)
+        return false;
+
+    const size_t valueLength = std::strlen(value);
+    if (length - pos < valueLength ||
+        std::memcmp(data + pos, value, valueLength) != 0)
+        return false;
+
+    pos += valueLength;
+    return pos == length || data[pos] == ',' || data[pos] == ';' ||
+           data[pos] == '\r' || data[pos] == '\n';
+}
+
 static bool parseUnsignedInt(
     const char* data,
     size_t length,
@@ -84,6 +103,7 @@ static bool parseUnicoreObsvmaTime(
         return false;
 
     int field = 0;
+    bool fineTime = false;
     bool haveWeek = false;
 
     for (size_t i = 0; i < length; ++i)
@@ -96,15 +116,21 @@ static bool parseUnicoreObsvmaTime(
 
         // Unicore N4 ASCII header:
         // #OBSVMA,<len>,GPS,<time status>,<week>,<milliseconds of week>,...
-        if (field == 4)
+        if (field == 3)
         {
-            if (!parseUnsignedInt(data, length, valuePos, t.week))
+            fineTime = fieldEquals(data, length, valuePos, "FINE");
+            if (!fineTime)
+                return false;
+        }
+        else if (field == 4)
+        {
+            if (!fineTime || !parseUnsignedInt(data, length, valuePos, t.week))
                 return false;
             haveWeek = true;
         }
         else if (field == 5)
         {
-            if (!haveWeek)
+            if (!fineTime || !haveWeek)
                 return false;
 
             double milliseconds = 0.0;

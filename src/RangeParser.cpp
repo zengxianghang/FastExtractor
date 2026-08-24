@@ -1,6 +1,25 @@
 #include "RangeParser.h"
 #include <cstring>
 
+static bool fieldEquals(
+    const char* data,
+    size_t length,
+    size_t pos,
+    const char* value)
+{
+    if (!data || !value || pos >= length)
+        return false;
+
+    const size_t valueLength = std::strlen(value);
+    if (length - pos < valueLength ||
+        std::memcmp(data + pos, value, valueLength) != 0)
+        return false;
+
+    pos += valueLength;
+    return pos == length || data[pos] == ',' || data[pos] == ';' ||
+           data[pos] == '\r' || data[pos] == '\n';
+}
+
 static bool parseIntField(const char* data, size_t length, size_t pos, int& value)
 {
     if (pos >= length || data[pos] < '0' || data[pos] > '9')
@@ -48,6 +67,7 @@ bool parseRangeTimeFast(const char* data, size_t length, GPST& t)
         return false;
 
     int field = 0;
+    bool fineTime = false;
     bool haveWeek = false;
 
     for (size_t i = 0; i < length; ++i)
@@ -58,15 +78,21 @@ bool parseRangeTimeFast(const char* data, size_t length, GPST& t)
         ++field;
         const size_t valuePos = i + 1;
 
-        if (field == 5)
+        if (field == 4)
         {
-            if (!parseIntField(data, length, valuePos, t.week))
+            fineTime = fieldEquals(data, length, valuePos, "FINE");
+            if (!fineTime)
+                return false;
+        }
+        else if (field == 5)
+        {
+            if (!fineTime || !parseIntField(data, length, valuePos, t.week))
                 return false;
             haveWeek = true;
         }
         else if (field == 6)
         {
-            if (!haveWeek)
+            if (!fineTime || !haveWeek)
                 return false;
             return parseDoubleField(data, length, valuePos, t.sow);
         }

@@ -240,7 +240,44 @@ static void testNoOverlapDoesNotCreateOutput()
     std::remove(output);
 }
 
-static void testBaseWeekSkipsZeroWeekObservations()
+static void testNonFineObservationsDoNotDefineBounds()
+{
+    const char* input = "fast_extractor_non_fine_bounds_input.log";
+    const char* output = "fast_extractor_non_fine_bounds_output.log";
+    std::remove(input);
+    std::remove(output);
+
+    const std::string fine100 =
+        "#RANGEA,COM1,0,0,FINE,2300,100.0;FINE100*00000000\n";
+    const std::string coarseRange =
+        "#RANGEA,COM1,0,0,COARSE,2300,100.4;COARSE_R*00000000\n";
+    const std::string coarseObsvma =
+        "#OBSVMA,94,GPS,COARSE,2300,100500,0,0,18,1;COARSE_U*00000000\n";
+    const std::string fine101 =
+        "#OBSVMA,94,GPS,FINE,2300,101000,0,0,18,1;FINE101*00000000\n";
+    const std::string fine102 =
+        "#RANGEA,COM1,0,0,FINE,2300,102.0;FINE102*00000000\n";
+
+    expect(writeFile(
+               input,
+               fine100 + coarseRange + coarseObsvma + fine101 + fine102),
+           "write non-FINE boundary input");
+
+    const GPST start{2300, 100.6};
+    const GPST end{2300, 100.8};
+    const int result = fastExtractByGPST(input, output, start, end);
+    expect(result == 0, "non-FINE boundary extraction succeeds");
+
+    const std::string expected =
+        fine100 + coarseRange + coarseObsvma + fine101;
+    expect(readFile(output) == expected,
+           "non-FINE RANGEA/OBSVMA do not define outward bounds");
+
+    std::remove(input);
+    std::remove(output);
+}
+
+static void testBaseWeekRequiresFineObservation()
 {
     const char* rangeInput = "fast_extractor_base_week_range.log";
     const char* obsvmaInput = "fast_extractor_base_week_obsvma.log";
@@ -250,38 +287,38 @@ static void testBaseWeekSkipsZeroWeekObservations()
     std::remove(invalidInput);
 
     const std::string rangeData =
-        "#RANGEA,COM1,0,0,UNKNOWN,0,0.0;ZERO*00000000\n"
+        "#RANGEA,COM1,0,0,COARSE,2299,5.0;COARSE*00000000\n"
         "#RANGEA,COM1,0,0,FINE,2300,10.0;VALID*00000000\n";
     expect(writeFile(rangeInput, rangeData),
            "write RANGEA base-week input");
 
     int week = 0;
     expect(detectBaseWeek(rangeInput, week),
-           "RANGEA base-week detection succeeds after week zero");
+           "RANGEA base-week detection succeeds after COARSE record");
     expect(week == 2300,
-           "RANGEA base-week detection skips week zero");
+           "RANGEA base-week detection uses first FINE week");
 
     const std::string obsvmaData =
-        "#OBSVMA,94,GPS,UNKNOWN,0,0,0,0,18,1;ZERO*00000000\n"
+        "#OBSVMA,94,GPS,UNKNOWN,2299,5000,0,0,18,1;UNKNOWN*00000000\n"
         "#OBSVMA,94,GPS,FINE,2301,10000,0,0,18,1;VALID*00000000\n";
     expect(writeFile(obsvmaInput, obsvmaData),
            "write OBSVMA base-week input");
 
     week = 0;
     expect(detectBaseWeek(obsvmaInput, week),
-           "OBSVMA base-week detection succeeds after week zero");
+           "OBSVMA base-week detection succeeds after UNKNOWN record");
     expect(week == 2301,
-           "OBSVMA base-week detection skips week zero");
+           "OBSVMA base-week detection uses first FINE week");
 
     const std::string invalidData =
-        "#RANGEA,COM1,0,0,UNKNOWN,0,0.0;ZERO*00000000\n"
-        "#OBSVMA,94,GPS,UNKNOWN,0,0,0,0,18,1;ZERO*00000000\n";
+        "#RANGEA,COM1,0,0,COARSE,2300,5.0;COARSE*00000000\n"
+        "#OBSVMA,94,GPS,UNKNOWN,2300,5000,0,0,18,1;UNKNOWN*00000000\n";
     expect(writeFile(invalidInput, invalidData),
-           "write invalid base-week input");
+           "write non-FINE-only base-week input");
 
     week = 0;
     expect(!detectBaseWeek(invalidInput, week),
-           "base-week detection rejects files containing only week zero");
+           "base-week detection rejects files containing no FINE observation");
 
     std::remove(rangeInput);
     std::remove(obsvmaInput);
@@ -295,7 +332,8 @@ int main()
     testObsvmaOnly();
     testEqualBoundaryKeepsWholeEpoch();
     testNoOverlapDoesNotCreateOutput();
-    testBaseWeekSkipsZeroWeekObservations();
+    testNonFineObservationsDoNotDefineBounds();
+    testBaseWeekRequiresFineObservation();
 
     if (failures != 0)
     {
