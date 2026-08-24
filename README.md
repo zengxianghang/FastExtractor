@@ -10,6 +10,8 @@ High performance GPST window extractor for large GNSS ASCII log files.
 - Uses outward GPST boundaries so observation data near requested boundaries is not accidentally dropped.
 - Retains selected NovAtel/Unicore ephemeris and ionosphere records that occur before the observation start boundary.
 - Navigation retention does not require the navigation record's time status to be `FINE`.
+- Uses one sequential header-only scan to locate observation boundaries and collect pre-start navigation spans.
+- Copies only the first 256 bytes of each line during the selection scan, avoiding copies of large observation bodies.
 - Copies the main observation window directly from the original file, preserving original bytes.
 - Supports automatic output filename generation in the input file directory.
 - Supports continuous GPST seconds without explicitly supplying GPS week, including cross-week intervals.
@@ -62,7 +64,17 @@ Supported Unicore N4 navigation records (ASCII log records normally carry the tr
 - `GALEPH`
 - `IRNSSEPH`
 
-Because the requirement is to retain **all** matching navigation records before the selected observation start, a first-time extraction must scan the file prefix up to the start boundary. The observation-boundary locator still uses estimated seeking, but the navigation-prefix requirement adds prefix-read I/O. A future metadata/index cache can remove most of this repeated-scan cost for repeated extractions from the same file.
+## No-cache performance strategy
+
+Retaining **all** matching navigation records before the selected observation start means the source prefix must still be read at least once when no persistent cache/index is used. FastExtractor minimizes the extra work as follows:
+
+1. It performs one sequential scan from the file start through the selected end boundary; it no longer performs file-time detection, estimated seek/backoff correction, and a second full prefix scan.
+2. The selection scan keeps only the first 256 bytes of each physical line. Large `RANGEA`/`OBSVMA` bodies are skipped in the scanner buffer rather than copied into a full-line buffer.
+3. During that same scan, only small transient `(offset, length)` spans are recorded for matching pre-start navigation lines. This metadata exists only for the current extraction and is not a persistent cache or index.
+4. After the boundaries are known, FastExtractor rereads only the selected navigation line bytes and the final raw observation byte window for output.
+5. Consecutive navigation lines are merged into one raw span to reduce seek/read calls.
+
+The unavoidable lower bound is therefore dominated by sequentially reading the source bytes up to the requested region, while CPU-side line copying and repeated full-prefix reads are minimized.
 
 The program prints the requested range, effective observation bounds, and the number of navigation records retained before start:
 
