@@ -103,9 +103,6 @@ static bool locateOutwardBounds(
     uint64_t searchOffset = estimatedOffset;
     uint64_t backoff = 64ULL * 1024 * 1024;
 
-    // The interpolation estimate may land after the requested start. Back off
-    // until the first observation from the search point is <= start, or until
-    // the file start is reached. Observation means RANGEA or OBSVMA.
     while (true)
     {
         GPST firstTime{};
@@ -150,14 +147,21 @@ static bool locateOutwardBounds(
         {
             if (compareGPST(t, start) <= 0)
             {
-                havePrevious = true;
-                previousTime = t;
-                previousOffset = lineOffset;
+                const int previousCompare = havePrevious ?
+                    compareGPST(t, previousTime) : 1;
+
+                if (!havePrevious || previousCompare > 0)
+                {
+                    havePrevious = true;
+                    previousTime = t;
+                    previousOffset = lineOffset;
+                }
+                // If another RANGEA/OBSVMA has the same GPST, keep the first
+                // byte offset of that epoch so no observation at the boundary
+                // is dropped.
                 continue;
             }
 
-            // Outward start: nearest observation <= requested start. If none
-            // exists, use the first observation after start.
             if (havePrevious)
             {
                 startOffset = previousOffset;
@@ -173,7 +177,6 @@ static bool locateOutwardBounds(
             sawObservationAfterStart = true;
             lastObservationAfterStart = t;
 
-            // start == end and an exact previous observation already covers it.
             if (havePrevious && compareGPST(actualStart, end) >= 0)
             {
                 actualEnd = actualStart;
@@ -188,7 +191,6 @@ static bool locateOutwardBounds(
             }
             else if (compareGPST(t, end) >= 0)
             {
-                // Outward end: first observation >= requested end.
                 actualEnd = t;
                 endCovered = true;
             }
@@ -207,16 +209,15 @@ static bool locateOutwardBounds(
                 endCovered = true;
             }
         }
-        else
+        else if (compareGPST(t, actualEnd) > 0)
         {
-            // Keep the endpoint observation and all following non-observation
-            // records. Stop immediately before the next observation epoch.
+            // All RANGEA/OBSVMA records sharing actualEnd GPST are retained.
+            // Stop only at the first strictly later observation epoch.
             endExclusive = lineOffset;
             return true;
         }
     }
 
-    // EOF handling deliberately extends rather than risking dropped data.
     if (!startFound && havePrevious)
     {
         startOffset = previousOffset;
@@ -263,8 +264,6 @@ static bool writeNavigationPrefix(
         if (classifySentence(data, length) != SentenceClass::NAVIGATION)
             continue;
 
-        // FastScanner removes only '\n'. For CRLF input the retained data still
-        // ends in '\r', so writing '\n' reconstructs the original line ending.
         if (length > 0 && fwrite(data, 1, length, fout) != length)
             return false;
         if (fwrite("\n", 1, 1, fout) != 1)
