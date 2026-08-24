@@ -1,5 +1,6 @@
 #include "FileTimeDetector.h"
 #include "FastScanner.h"
+#include "ObservationParser.h"
 #include "TailScanner.h"
 
 bool detectFileTimeRange(const char* filename, FileTimeRange& range)
@@ -18,7 +19,7 @@ bool detectFileTimeRange(const char* filename, FileTimeRange& range)
 
     while (scanner.nextLine(data, length, offset))
     {
-        if (parseRangeTimeFast(data, length, first))
+        if (parseObservationTimeFast(data, length, first))
         {
             foundFirst = true;
             break;
