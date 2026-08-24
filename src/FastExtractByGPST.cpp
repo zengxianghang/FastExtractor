@@ -2,7 +2,9 @@
 #include "FastScanner.h"
 #include "FileTimeDetector.h"
 #include "GpstLocator.h"
+#include "ObservationParser.h"
 #include "RangeParser.h"
+#include "SentenceClassifier.h"
 
 #include <cstdio>
 #include <cstdint>
@@ -58,7 +60,11 @@ static bool getFileSize(const char* filename, uint64_t& fileSize)
     return true;
 }
 
-static bool findFirstRangeFrom(FastScanner& scanner, uint64_t offset, GPST& t, uint64_t& rangeOffset)
+static bool findFirstObservationFrom(
+    FastScanner& scanner,
+    uint64_t offset,
+    GPST& t,
+    uint64_t& observationOffset)
 {
     if (!scanner.seek(offset, offset != 0))
         return false;
@@ -69,9 +75,9 @@ static bool findFirstRangeFrom(FastScanner& scanner, uint64_t offset, GPST& t, u
 
     while (scanner.nextLine(data, length, lineOffset))
     {
-        if (parseRangeTimeFast(data, length, t))
+        if (parseObservationTimeFast(data, length, t))
         {
-            rangeOffset = lineOffset;
+            observationOffset = lineOffset;
             return true;
         }
     }
@@ -97,13 +103,12 @@ static bool locateOutwardBounds(
     uint64_t searchOffset = estimatedOffset;
     uint64_t backoff = 64ULL * 1024 * 1024;
 
-    // The linear estimate may land after the requested start. Back off until
-    // the first RANGE from the search point is <= start, or reach file start.
     while (true)
     {
         GPST firstTime{};
         uint64_t firstOffset = 0;
-        const bool found = findFirstRangeFrom(scanner, searchOffset, firstTime, firstOffset);
+        const bool found = findFirstObservationFrom(
+            scanner, searchOffset, firstTime, firstOffset);
 
         if (found && (compareGPST(firstTime, start) <= 0 || searchOffset == 0))
             break;
@@ -129,27 +134,34 @@ static bool locateOutwardBounds(
 
     bool startFound = false;
     bool endCovered = false;
-    bool sawRangeAfterStart = false;
-    GPST lastRangeAfterStart{};
+    bool sawObservationAfterStart = false;
+    GPST lastObservationAfterStart{};
 
     while (scanner.nextLine(data, length, lineOffset))
     {
         GPST t{};
-        if (!parseRangeTimeFast(data, length, t))
+        if (!parseObservationTimeFast(data, length, t))
             continue;
 
         if (!startFound)
         {
             if (compareGPST(t, start) <= 0)
             {
-                havePrevious = true;
-                previousTime = t;
-                previousOffset = lineOffset;
+                const int previousCompare = havePrevious ?
+                    compareGPST(t, previousTime) : 1;
+
+                if (!havePrevious || previousCompare > 0)
+                {
+                    havePrevious = true;
+                    previousTime = t;
+                    previousOffset = lineOffset;
+                }
+                // If another RANGEA/OBSVMA has the same GPST, keep the first
+                // byte offset of that epoch so no observation at the boundary
+                // is dropped.
                 continue;
             }
 
-            // Outward start: nearest RANGE <= requested start. If none exists,
-            // use the first RANGE after start (requested start precedes file data).
             if (havePrevious)
             {
                 startOffset = previousOffset;
@@ -162,10 +174,9 @@ static bool locateOutwardBounds(
             }
 
             startFound = true;
-            sawRangeAfterStart = true;
-            lastRangeAfterStart = t;
+            sawObservationAfterStart = true;
+            lastObservationAfterStart = t;
 
-            // start == end and the previous RANGE is already the outward endpoint.
             if (havePrevious && compareGPST(actualStart, end) >= 0)
             {
                 actualEnd = actualStart;
@@ -180,7 +191,6 @@ static bool locateOutwardBounds(
             }
             else if (compareGPST(t, end) >= 0)
             {
-                // Outward end: first RANGE >= requested end.
                 actualEnd = t;
                 endCovered = true;
             }
@@ -188,8 +198,8 @@ static bool locateOutwardBounds(
             continue;
         }
 
-        sawRangeAfterStart = true;
-        lastRangeAfterStart = t;
+        sawObservationAfterStart = true;
+        lastObservationAfterStart = t;
 
         if (!endCovered)
         {
@@ -199,17 +209,15 @@ static bool locateOutwardBounds(
                 endCovered = true;
             }
         }
-        else
+        else if (compareGPST(t, actualEnd) > 0)
         {
-            // Keep the endpoint RANGE and all following non-RANGE records.
-            // Stop immediately before the next RANGE.
+            // All RANGEA/OBSVMA records sharing actualEnd GPST are retained.
+            // Stop only at the first strictly later observation epoch.
             endExclusive = lineOffset;
             return true;
         }
     }
 
-    // EOF handling. If no next RANGE exists, deliberately extend to EOF rather
-    // than risk dropping data at either boundary.
     if (!startFound && havePrevious)
     {
         startOffset = previousOffset;
@@ -221,8 +229,8 @@ static bool locateOutwardBounds(
 
     if (startFound)
     {
-        if (!endCovered && sawRangeAfterStart)
-            actualEnd = lastRangeAfterStart;
+        if (!endCovered && sawObservationAfterStart)
+            actualEnd = lastObservationAfterStart;
         endExclusive = fileSize;
         return true;
     }
@@ -230,51 +238,69 @@ static bool locateOutwardBounds(
     return false;
 }
 
-static bool copyRawRange(
+static bool writeNavigationPrefix(
     const char* input,
-    const char* output,
+    FILE* fout,
+    uint64_t stopOffset,
+    uint64_t& keptCount)
+{
+    keptCount = 0;
+    if (stopOffset == 0)
+        return true;
+
+    FastScanner scanner(input);
+    if (!scanner.valid())
+        return false;
+
+    const char* data = nullptr;
+    size_t length = 0;
+    uint64_t lineOffset = 0;
+
+    while (scanner.nextLine(data, length, lineOffset))
+    {
+        if (lineOffset >= stopOffset)
+            break;
+
+        if (classifySentence(data, length) != SentenceClass::NAVIGATION)
+            continue;
+
+        if (length > 0 && fwrite(data, 1, length, fout) != length)
+            return false;
+        if (fwrite("\n", 1, 1, fout) != 1)
+            return false;
+
+        ++keptCount;
+    }
+
+    return true;
+}
+
+static bool copyRawRangeTo(
+    FILE* fin,
+    FILE* fout,
     uint64_t startOffset,
     uint64_t endExclusive)
 {
-    if (endExclusive < startOffset)
+    if (!fin || !fout || endExclusive < startOffset)
         return false;
-
-    FILE* fin = fopen(input, "rb");
-    if (!fin)
-        return false;
-
-    FILE* fout = fopen(output, "wb");
-    if (!fout)
-    {
-        fclose(fin);
-        return false;
-    }
 
     if (seekFile64(fin, startOffset) != 0)
-    {
-        fclose(fin);
-        fclose(fout);
-        remove(output);
         return false;
-    }
 
     const size_t bufferSize = 16 * 1024 * 1024;
     char* buffer = new (std::nothrow) char[bufferSize];
     if (!buffer)
-    {
-        fclose(fin);
-        fclose(fout);
-        remove(output);
         return false;
-    }
 
     uint64_t remaining = endExclusive - startOffset;
     bool ok = true;
 
     while (remaining > 0)
     {
-        const size_t chunk = remaining < bufferSize ? static_cast<size_t>(remaining) : bufferSize;
+        const size_t chunk = remaining < bufferSize ?
+            static_cast<size_t>(remaining) : bufferSize;
         const size_t readCount = fread(buffer, 1, chunk, fin);
+
         if (readCount == 0)
         {
             ok = false;
@@ -291,6 +317,33 @@ static bool copyRawRange(
     }
 
     delete [] buffer;
+    return ok;
+}
+
+static bool writeSelectedData(
+    const char* input,
+    const char* output,
+    uint64_t startOffset,
+    uint64_t endExclusive,
+    uint64_t& navigationPrefixCount)
+{
+    FILE* fin = fopen(input, "rb");
+    if (!fin)
+        return false;
+
+    FILE* fout = fopen(output, "wb");
+    if (!fout)
+    {
+        fclose(fin);
+        return false;
+    }
+
+    bool ok = writeNavigationPrefix(
+        input, fout, startOffset, navigationPrefixCount);
+
+    if (ok)
+        ok = copyRawRangeTo(fin, fout, startOffset, endExclusive);
+
     fclose(fin);
     fclose(fout);
 
@@ -313,10 +366,11 @@ int fastExtractByGPST(
     if (!detectFileTimeRange(input, range) || !range.valid)
         return -2;
 
-    // If the request has no overlap with the file at all, no outward expansion
-    // can cover the requested interval, so report it instead of creating junk.
-    if (compareGPST(end, range.start) < 0 || compareGPST(start, range.end) > 0)
+    if (compareGPST(end, range.start) < 0 ||
+        compareGPST(start, range.end) > 0)
+    {
         return -3;
+    }
 
     uint64_t fileSize = 0;
     if (!getFileSize(input, fileSize))
@@ -339,15 +393,25 @@ int fastExtractByGPST(
     if (!locateOutwardBounds(
             input, fileSize, estimatedOffset, start, end,
             startOffset, endExclusive, actualStart, actualEnd))
+    {
         return -5;
+    }
 
-    if (!copyRawRange(input, output, startOffset, endExclusive))
+    uint64_t navigationPrefixCount = 0;
+    if (!writeSelectedData(
+            input, output, startOffset, endExclusive,
+            navigationPrefixCount))
+    {
         return -6;
+    }
 
     std::printf("Requested: %d %.3f ~ %d %.3f\n",
                 start.week, start.sow, end.week, end.sow);
-    std::printf("Extracted: %d %.3f ~ %d %.3f\n",
-                actualStart.week, actualStart.sow, actualEnd.week, actualEnd.sow);
+    std::printf("Extracted observation bounds: %d %.3f ~ %d %.3f\n",
+                actualStart.week, actualStart.sow,
+                actualEnd.week, actualEnd.sow);
+    std::printf("Navigation records kept before start: %llu\n",
+                static_cast<unsigned long long>(navigationPrefixCount));
 
     return 0;
 }
