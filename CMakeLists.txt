@@ -7,6 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_executable(FastExtractor
     src/main.cpp
+    src/BaseWeekDetector.cpp
     src/RangeParser.cpp
     src/ObservationParser.cpp
     src/Extractor.cpp
@@ -36,6 +37,7 @@ if(BUILD_TESTING)
 
     add_executable(ExtractionTests
         tests/ExtractionTests.cpp
+        src/BaseWeekDetector.cpp
         src/FastExtractByGPST.cpp
         src/FastExtractNoNav.cpp
         src/FastScanner.cpp
