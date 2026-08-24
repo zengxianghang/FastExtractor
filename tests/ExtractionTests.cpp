@@ -80,14 +80,58 @@ static void testMixedObservationAndNavigation()
     const GPST start{2300, 99.5};
     const GPST end{2300, 100.5};
     const int result = fastExtractByGPST(input, output, start, end);
-    expect(result == 0, "mixed extraction succeeds");
+    expect(result == 0, "keep-NAV mixed extraction succeeds");
 
     const std::string expected =
         nav0 + obs99 + nav99 + obs100 + nav100 +
         obs101r + obs101u + afterEnd;
 
     expect(readFile(output) == expected,
-           "navigation prefix and mixed outward window preserve raw bytes");
+           "keep-NAV mode preserves navigation prefix and raw outward window");
+
+    std::remove(input);
+    std::remove(output);
+}
+
+static void testNoNavFastPath()
+{
+    const char* input = "fast_extractor_no_nav_input.log";
+    const char* output = "fast_extractor_no_nav_output.log";
+    std::remove(input);
+    std::remove(output);
+
+    const std::string nav0 =
+        "#GPSEPHEMA,COM1,0,0,COARSE,2300,50.0;NAV0*00000000\r\n";
+    const std::string other0 =
+        "#BESTPOSA,COM1,0,0,FINE,2300,80.0;OTHER0*00000000\r\n";
+    const std::string obs99 =
+        "#RANGEA,COM1,0,0,FINE,2300,99.0;OBS99*00000000\r\n";
+    const std::string nav99 =
+        "#GPSIONA,60,GPS,COARSE,2300,99500,0,0,18,1;NAV99*00000000\r\n";
+    const std::string obs100 =
+        "#OBSVMA,94,GPS,FINE,2300,100000,0,0,18,1;OBS100*00000000\r\n";
+    const std::string obs101 =
+        "#RANGEA,COM1,0,0,FINE,2300,101.0;OBS101*00000000\r\n";
+    const std::string trailing =
+        "#BESTPOSA,COM1,0,0,FINE,2300,101.2;TRAIL*00000000\r\n";
+    const std::string obs102 =
+        "#RANGEA,COM1,0,0,FINE,2300,102.0;OBS102*00000000\r\n";
+
+    expect(writeFile(
+               input,
+               nav0 + other0 + obs99 + nav99 + obs100 +
+               obs101 + trailing + obs102),
+           "write no-NAV input");
+
+    const GPST start{2300, 99.5};
+    const GPST end{2300, 100.5};
+    const int result = fastExtractByGPSTNoNav(input, output, start, end);
+    expect(result == 0, "no-NAV fast extraction succeeds");
+
+    const std::string expected =
+        obs99 + nav99 + obs100 + obs101 + trailing;
+    expect(readFile(output) == expected,
+           "no-NAV mode omits pre-start NAV but preserves raw window contents");
 
     std::remove(input);
     std::remove(output);
@@ -115,7 +159,7 @@ static void testObsvmaOnly()
     const GPST start{2300, 10.2};
     const GPST end{2300, 10.8};
     const int result = fastExtractByGPST(input, output, start, end);
-    expect(result == 0, "OBSVMA-only extraction succeeds");
+    expect(result == 0, "OBSVMA-only keep-NAV extraction succeeds");
     expect(readFile(output) == nav + obs10 + obs11,
            "OBSVMA-only outward bounds are correct");
 
@@ -198,6 +242,7 @@ static void testNoOverlapDoesNotCreateOutput()
 int main()
 {
     testMixedObservationAndNavigation();
+    testNoNavFastPath();
     testObsvmaOnly();
     testEqualBoundaryKeepsWholeEpoch();
     testNoOverlapDoesNotCreateOutput();
