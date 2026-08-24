@@ -11,6 +11,7 @@ add_executable(FastExtractor
     src/ObservationParser.cpp
     src/Extractor.cpp
     src/FastExtractByGPST.cpp
+    src/FastExtractNoNav.cpp
     src/GpstLocator.cpp
     src/FastScanner.cpp
     src/FileTimeDetector.cpp
@@ -36,10 +37,14 @@ if(BUILD_TESTING)
     add_executable(ExtractionTests
         tests/ExtractionTests.cpp
         src/FastExtractByGPST.cpp
+        src/FastExtractNoNav.cpp
         src/FastScanner.cpp
         src/RangeParser.cpp
         src/ObservationParser.cpp
         src/SentenceClassifier.cpp
+        src/FileTimeDetector.cpp
+        src/TailScanner.cpp
+        src/GpstLocator.cpp
     )
     target_include_directories(ExtractionTests PRIVATE include)
     add_test(NAME ExtractionTests COMMAND ExtractionTests)
