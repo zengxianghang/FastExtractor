@@ -1,5 +1,6 @@
 #include "RangeParser.h"
 #include "FastScanner.h"
+#include "ObservationParser.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -54,7 +55,7 @@ static bool detectBaseWeek(const char* input, int& baseWeek)
     while (scanner.nextLine(data, length, offset))
     {
         GPST t{};
-        if (parseRangeTimeFast(data, length, t))
+        if (parseObservationTimeFast(data, length, t))
         {
             baseWeek = t.week;
             return true;
@@ -79,7 +80,6 @@ static bool resolveContinuousSeconds(int baseWeek, double seconds, GPST& t)
     int weekOffset = static_cast<int>(weekOffsetDouble);
     double sow = seconds - weekOffsetDouble * 604800.0;
 
-    // Protect against floating-point values that land exactly on the next week.
     if (sow >= 604800.0)
     {
         if (baseWeek + weekOffset == std::numeric_limits<int>::max())
@@ -136,7 +136,7 @@ int main(int argc, char** argv)
         int baseWeek = 0;
         if (!detectBaseWeek(argv[1], baseWeek))
         {
-            std::cerr << "Unable to detect the base GPS week from the first valid RANGEA record.\n";
+            std::cerr << "Unable to detect the base GPS week from the first valid RANGEA/OBSVMA record.\n";
             return -2;
         }
 
