@@ -15,6 +15,7 @@ High performance GPST window extractor for large GNSS ASCII log files.
 - Copies the main observation window directly from the original file, preserving original bytes.
 - Supports automatic output filename generation in the input file directory.
 - Supports continuous GPST seconds without explicitly supplying GPS week, including cross-week intervals.
+- Includes CTest parser/extraction tests and GitHub Actions CI on Ubuntu and Windows.
 - C++17 implementation with CMake/CTest support.
 
 ## Observation boundary policy
@@ -68,7 +69,7 @@ Supported Unicore N4 navigation records (ASCII log records normally carry the tr
 
 Retaining **all** matching navigation records before the selected observation start means the source prefix must still be read at least once when no persistent cache/index is used. FastExtractor minimizes the extra work as follows:
 
-1. It performs one sequential scan from the file start through the selected end boundary; it no longer performs file-time detection, estimated seek/backoff correction, and a second full prefix scan.
+1. It performs one sequential scan from the file start through the first observation epoch strictly after the selected end epoch (or EOF when there is no later observation). This same scan determines the outward observation boundaries and collects pre-start navigation spans, so there is no separate file-time detection, estimated seek/backoff correction, or second full prefix scan.
 2. The selection scan keeps only the first 256 bytes of each physical line. Large `RANGEA`/`OBSVMA` bodies are skipped in the scanner buffer rather than copied into a full-line buffer.
 3. During that same scan, only small transient `(offset, length)` spans are recorded for matching pre-start navigation lines. This metadata exists only for the current extraction and is not a persistent cache or index.
 4. After the boundaries are known, FastExtractor rereads only the selected navigation line bytes and the final raw observation byte window for output.
@@ -101,15 +102,39 @@ week = 2190
 sow  = 117395.000
 ```
 
-## Build
+## Build and test
+
+Use the same Release configuration used by CI:
 
 ```bash
-mkdir build
-cd build
-cmake ..
-cmake --build . --config Release
-ctest --output-on-failure
+cmake -S . -B build -DBUILD_TESTING=ON
+cmake --build build --config Release --parallel
+ctest --test-dir build -C Release --output-on-failure
 ```
+
+The `-C Release` option is required for multi-config generators such as the default Visual Studio generator on Windows and is harmless for single-config generators.
+
+## Tests
+
+CTest currently registers two test executables:
+
+- `ParserTests`: validates `RANGEA`/`OBSVMA` time parsing and the complete NovAtel/Unicore observation/navigation sentence classification whitelist.
+- `ExtractionTests`: validates end-to-end extraction behavior, including mixed `RANGEA` + `OBSVMA`, pre-start navigation retention, same-GPST boundary records, `start == end`, CRLF raw-byte preservation, large unrelated lines, OBSVMA-only logs, and no-overlap handling.
+
+Run all tests with:
+
+```bash
+ctest --test-dir build -C Release --output-on-failure
+```
+
+## Continuous Integration
+
+GitHub Actions runs the same Release build and CTest suite on both:
+
+- `ubuntu-latest`
+- `windows-latest`
+
+The CI workflow runs for pull requests targeting `main`, pushes to `main`, and manual `workflow_dispatch` runs.
 
 ## Usage
 
