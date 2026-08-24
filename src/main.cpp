@@ -1,3 +1,4 @@
+#include "BaseWeekDetector.h"
 #include "RangeParser.h"
 #include "FastScanner.h"
 #include "ObservationParser.h"
@@ -44,34 +45,9 @@ static bool parseDoubleStrict(const char* text, double& value)
     return end != text && *end == '\0' && std::isfinite(value);
 }
 
-static bool detectBaseWeek(const char* input, int& baseWeek)
-{
-    FastScanner scanner(input);
-    if (!scanner.valid())
-        return false;
-
-    const char* data = nullptr;
-    size_t prefixLength = 0;
-    uint64_t offset = 0;
-    uint64_t rawLength = 0;
-
-    while (scanner.nextLinePrefix(
-        data, prefixLength, offset, rawLength, 256))
-    {
-        GPST t{};
-        if (parseObservationTimeFast(data, prefixLength, t))
-        {
-            baseWeek = t.week;
-            return true;
-        }
-    }
-
-    return false;
-}
-
 static bool resolveContinuousSeconds(int baseWeek, double seconds, GPST& t)
 {
-    if (!std::isfinite(seconds) || seconds < 0.0)
+    if (baseWeek <= 0 || !std::isfinite(seconds) || seconds < 0.0)
         return false;
 
     const double weekOffsetDouble = std::floor(seconds / 604800.0);
@@ -156,7 +132,7 @@ int main(int argc, char** argv)
         int baseWeek = 0;
         if (!detectBaseWeek(args[1], baseWeek))
         {
-            std::cerr << "Unable to detect the base GPS week from the first valid RANGEA/OBSVMA record.\n";
+            std::cerr << "Unable to detect a valid base GPS week from RANGEA/OBSVMA records.\n";
             return -2;
         }
 
