@@ -1,5 +1,6 @@
 #include "FastScanner.h"
 #include <cstdio>
+#include <cstring>
 #include <new>
 
 static const size_t BUFFER_SIZE = 16 * 1024 * 1024;
@@ -153,5 +154,79 @@ bool FastScanner::nextLine(const char*& data, size_t& length, uint64_t& offset)
             return false;
 
         line_[lineSize++] = c;
+    }
+}
+
+bool FastScanner::nextLinePrefix(
+    const char*& data,
+    size_t& prefixLength,
+    uint64_t& offset,
+    uint64_t& rawLength,
+    size_t maxPrefix)
+{
+    if (!valid())
+        return false;
+
+    size_t prefixSize = 0;
+    rawLength = 0;
+    const uint64_t lineStart = absoluteOffset_;
+
+    while (true)
+    {
+        if (pos_ >= size_)
+        {
+            size_ = fread(buffer_, 1, bufferSize_, static_cast<FILE*>(fp_));
+            pos_ = 0;
+
+            if (size_ == 0)
+            {
+                if (rawLength == 0)
+                    return false;
+
+                data = line_;
+                prefixLength = prefixSize;
+                offset = lineStart;
+                return true;
+            }
+        }
+
+        const char* begin = buffer_ + pos_;
+        const size_t available = size_ - pos_;
+        const void* newlineRaw = std::memchr(begin, '\n', available);
+        const char* newline = static_cast<const char*>(newlineRaw);
+        const size_t segmentLength = newline ?
+            static_cast<size_t>(newline - begin) : available;
+
+        if (prefixSize < maxPrefix)
+        {
+            const size_t remainingPrefix = maxPrefix - prefixSize;
+            const size_t copyLength = segmentLength < remainingPrefix ?
+                segmentLength : remainingPrefix;
+
+            if (copyLength > 0)
+            {
+                if (!ensureLineCapacity(prefixSize + copyLength))
+                    return false;
+
+                std::memcpy(line_ + prefixSize, begin, copyLength);
+                prefixSize += copyLength;
+            }
+        }
+
+        pos_ += segmentLength;
+        absoluteOffset_ += segmentLength;
+        rawLength += segmentLength;
+
+        if (newline)
+        {
+            ++pos_;
+            ++absoluteOffset_;
+            ++rawLength;
+
+            data = line_;
+            prefixLength = prefixSize;
+            offset = lineStart;
+            return true;
+        }
     }
 }
