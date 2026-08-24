@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <iomanip>
 #include <iostream>
@@ -11,7 +12,8 @@
 #include <sstream>
 #include <string>
 
-int extractRange(const char*, const char*, const GPST&, const GPST&);
+int extractRange(
+    const char*, const char*, const GPST&, const GPST&, bool keepNavigation);
 
 static std::string makeAutoOutputPath(
     const char* input,
@@ -102,22 +104,38 @@ static void printUsage()
 {
     std::cout
         << "Usage:\n"
-        << "  FastExtractor input output startWeek startSow endWeek endSow\n"
-        << "  FastExtractor input startWeek startSow endWeek endSow\n"
-        << "  FastExtractor input output startSec endSec\n"
-        << "  FastExtractor input startSec endSec\n";
+        << "  FastExtractor [--keep-nav] input output startWeek startSow endWeek endSow\n"
+        << "  FastExtractor [--keep-nav] input startWeek startSow endWeek endSow\n"
+        << "  FastExtractor [--keep-nav] input output startSec endSec\n"
+        << "  FastExtractor [--keep-nav] input startSec endSec\n\n"
+        << "Default: NAV history is not retained.\n"
+        << "Use --keep-nav to retain configured navigation records before the outward start boundary.\n";
 }
 
 int main(int argc, char** argv)
 {
-    if (argc < 4 || argc > 7)
+    const bool keepNavigation =
+        argc > 1 && std::strcmp(argv[1], "--keep-nav") == 0;
+    const int shift = keepNavigation ? 1 : 0;
+    const int effectiveArgc = argc - shift;
+    char** args = argv + shift;
+
+    if (argc > 1 && argv[1][0] == '-' && argv[1][1] == '-' &&
+        !keepNavigation)
+    {
+        std::cerr << "Unknown option: " << argv[1] << "\n";
+        printUsage();
+        return -1;
+    }
+
+    if (effectiveArgc < 4 || effectiveArgc > 7)
     {
         printUsage();
         return -1;
     }
 
-    const bool implicitWeek = (argc == 4 || argc == 5);
-    const bool autoOutput = (argc == 4 || argc == 6);
+    const bool implicitWeek = (effectiveArgc == 4 || effectiveArgc == 5);
+    const bool autoOutput = (effectiveArgc == 4 || effectiveArgc == 6);
     const int timeArg = autoOutput ? 2 : 3;
 
     GPST start{};
@@ -127,8 +145,8 @@ int main(int argc, char** argv)
 
     if (implicitWeek)
     {
-        if (!parseDoubleStrict(argv[timeArg], startSec) ||
-            !parseDoubleStrict(argv[timeArg + 1], endSec) ||
+        if (!parseDoubleStrict(args[timeArg], startSec) ||
+            !parseDoubleStrict(args[timeArg + 1], endSec) ||
             startSec < 0.0 || endSec < 0.0 || startSec > endSec)
         {
             std::cerr << "Invalid continuous GPST seconds. Require 0 <= startSec <= endSec.\n";
@@ -136,7 +154,7 @@ int main(int argc, char** argv)
         }
 
         int baseWeek = 0;
-        if (!detectBaseWeek(argv[1], baseWeek))
+        if (!detectBaseWeek(args[1], baseWeek))
         {
             std::cerr << "Unable to detect the base GPS week from the first valid RANGEA/OBSVMA record.\n";
             return -2;
@@ -156,10 +174,10 @@ int main(int argc, char** argv)
     }
     else
     {
-        start.week = std::atoi(argv[timeArg]);
-        start.sow = std::atof(argv[timeArg + 1]);
-        end.week = std::atoi(argv[timeArg + 2]);
-        end.sow = std::atof(argv[timeArg + 3]);
+        start.week = std::atoi(args[timeArg]);
+        start.sow = std::atof(args[timeArg + 1]);
+        end.week = std::atoi(args[timeArg + 2]);
+        end.sow = std::atof(args[timeArg + 3]);
     }
 
     std::string generatedOutput;
@@ -167,15 +185,16 @@ int main(int argc, char** argv)
 
     if (autoOutput)
     {
-        generatedOutput = makeAutoOutputPath(argv[1], start, end);
+        generatedOutput = makeAutoOutputPath(args[1], start, end);
         output = generatedOutput.c_str();
     }
     else
     {
-        output = argv[2];
+        output = args[2];
     }
 
-    const int result = extractRange(argv[1], output, start, end);
+    const int result = extractRange(
+        args[1], output, start, end, keepNavigation);
 
     if (result == 0 && autoOutput)
         std::cout << "Output: " << generatedOutput << "\n";
