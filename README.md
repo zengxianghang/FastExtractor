@@ -8,19 +8,45 @@ High performance GPST window extractor for large GNSS ASCII log files.
 - Supports NovAtel OEM7 `RANGEA` observation epochs.
 - Supports Unicore N4 `OBSVMA` observation epochs.
 - Uses outward GPST boundaries so observation data near requested boundaries is not accidentally dropped.
-- Retains selected NovAtel/Unicore ephemeris and ionosphere records that occur before the observation start boundary.
-- Navigation retention does not require the navigation record's time status to be `FINE`.
-- Uses one sequential header-only scan to locate observation boundaries and collect pre-start navigation spans.
-- Copies only the first 256 bytes of each line during the selection scan, avoiding copies of large observation bodies.
+- Default mode does **not** retain navigation history before the selected observation start and uses the fast estimated-offset extraction strategy.
+- Optional `--keep-nav` mode retains selected NovAtel/Unicore ephemeris and ionosphere records before the observation start boundary.
+- `--keep-nav` does not require the navigation record's time status to be `FINE`.
+- In `--keep-nav` mode, one sequential header-only scan locates observation boundaries and collects pre-start navigation spans.
 - Copies the main observation window directly from the original file, preserving original bytes.
 - Supports automatic output filename generation in the input file directory.
 - Supports continuous GPST seconds without explicitly supplying GPS week, including cross-week intervals.
 - Includes CTest parser/extraction tests and GitHub Actions CI on Ubuntu and Windows.
 - C++17 implementation with CMake/CTest support.
 
+## Extraction modes
+
+FastExtractor has two extraction modes.
+
+### Default: observation-only fast mode
+
+Do not add a mode option:
+
+```bash
+FastExtractor input.log start_sec end_sec
+```
+
+This mode does not scan and prepend navigation history before the selected observation start. It uses file time-range detection, an estimated byte offset, local outward-boundary correction, and raw byte copying. This is the preferred mode when only the requested observation window is needed.
+
+Navigation or other records that already lie **inside** the final raw observation byte window are still preserved because that window is copied byte-for-byte.
+
+### Retain navigation history: `--keep-nav`
+
+Prefix any normal invocation with `--keep-nav`:
+
+```bash
+FastExtractor --keep-nav input.log start_sec end_sec
+```
+
+This mode additionally retains all configured navigation records that physically occur before the selected outward observation start boundary. Because finding all such records requires reading the preceding file content, this mode uses the no-cache sequential header-only scan described below.
+
 ## Observation boundary policy
 
-`RANGEA` and `OBSVMA` are both treated as observation-epoch records and use the same outward-boundary policy.
+`RANGEA` and `OBSVMA` are both treated as observation-epoch records and use the same outward-boundary policy in both modes.
 
 For a requested interval `[start, end]`:
 
@@ -37,7 +63,9 @@ Example, if observation epochs are `100.0, 101.0, 102.0, 103.0, 104.0` and the r
 
 ## Navigation retention policy
 
-Before the selected observation start boundary, FastExtractor keeps only the configured navigation record types. Once the observation window starts, the existing raw-window behavior is preserved: records in the selected byte range remain in their original order and original bytes.
+Navigation history before the selected observation start is retained **only when `--keep-nav` is supplied**.
+
+Before the selected observation start boundary, `--keep-nav` keeps only the configured navigation record types. Once the observation window starts, the existing raw-window behavior is preserved: records in the selected byte range remain in their original order and original bytes.
 
 Navigation records before `start` are retained solely by message type and file position. Their header time status does **not** need to be `FINE`; this intentionally preserves navigation information emitted during receiver startup or other non-FINE periods.
 
@@ -65,25 +93,17 @@ Supported Unicore N4 navigation records (ASCII log records normally carry the tr
 - `GALEPH`
 - `IRNSSEPH`
 
-## No-cache performance strategy
+## `--keep-nav` no-cache performance strategy
 
-Retaining **all** matching navigation records before the selected observation start means the source prefix must still be read at least once when no persistent cache/index is used. FastExtractor minimizes the extra work as follows:
+Retaining **all** matching navigation records before the selected observation start means the source prefix must still be read at least once when no persistent cache/index is used. `--keep-nav` minimizes the extra work as follows:
 
-1. It performs one sequential scan from the file start through the first observation epoch strictly after the selected end epoch (or EOF when there is no later observation). This same scan determines the outward observation boundaries and collects pre-start navigation spans, so there is no separate file-time detection, estimated seek/backoff correction, or second full prefix scan.
+1. It performs one sequential scan from the file start through the first observation epoch strictly after the selected end epoch (or EOF when there is no later observation).
 2. The selection scan keeps only the first 256 bytes of each physical line. Large `RANGEA`/`OBSVMA` bodies are skipped in the scanner buffer rather than copied into a full-line buffer.
 3. During that same scan, only small transient `(offset, length)` spans are recorded for matching pre-start navigation lines. This metadata exists only for the current extraction and is not a persistent cache or index.
 4. After the boundaries are known, FastExtractor rereads only the selected navigation line bytes and the final raw observation byte window for output.
 5. Consecutive navigation lines are merged into one raw span to reduce seek/read calls.
 
-The unavoidable lower bound is therefore dominated by sequentially reading the source bytes up to the requested region, while CPU-side line copying and repeated full-prefix reads are minimized.
-
-The program prints the requested range, effective observation bounds, and the number of navigation records retained before start:
-
-```text
-Requested: 2300 100.400 ~ 2300 102.300
-Extracted observation bounds: 2300 100.000 ~ 2300 103.000
-Navigation records kept before start: 42
-```
+The default observation-only mode does not pay this full-prefix NAV-history scan cost.
 
 ## Unicore OBSVMA time handling
 
@@ -119,49 +139,70 @@ The `-C Release` option is required for multi-config generators such as the defa
 CTest currently registers two test executables:
 
 - `ParserTests`: validates `RANGEA`/`OBSVMA` time parsing and the complete NovAtel/Unicore observation/navigation sentence classification whitelist.
-- `ExtractionTests`: validates end-to-end extraction behavior, including mixed `RANGEA` + `OBSVMA`, pre-start navigation retention, same-GPST boundary records, `start == end`, CRLF raw-byte preservation, large unrelated lines, OBSVMA-only logs, and no-overlap handling.
-
-Run all tests with:
-
-```bash
-ctest --test-dir build -C Release --output-on-failure
-```
+- `ExtractionTests`: validates both extraction modes, including default omission of pre-start NAV history, explicit NAV retention, mixed `RANGEA` + `OBSVMA`, same-GPST boundary records, `start == end`, CRLF raw-byte preservation, large unrelated lines, OBSVMA-only logs, and no-overlap handling.
 
 ## Continuous Integration
 
-GitHub Actions runs the same Release build and CTest suite on both:
-
-- `ubuntu-latest`
-- `windows-latest`
-
-The CI workflow runs for pull requests targeting `main`, pushes to `main`, and manual `workflow_dispatch` runs.
+GitHub Actions runs the Release build and CTest suite on both `ubuntu-latest` and `windows-latest`. The workflow runs for pull requests targeting `main`, pushes to `main`, and manual `workflow_dispatch` runs.
 
 ## Usage
 
-FastExtractor supports four CLI forms.
+FastExtractor supports four time/output forms. By default these forms use observation-only fast mode. Add `--keep-nav` immediately after `FastExtractor` to use NAV-retention mode.
 
 ### Explicit GPS week, explicit output filename
+
+Default:
 
 ```bash
 FastExtractor input.log output.log start_week start_sow end_week end_sow
 ```
 
+With NAV history:
+
+```bash
+FastExtractor --keep-nav input.log output.log start_week start_sow end_week end_sow
+```
+
 ### Explicit GPS week, automatic output filename
+
+Default:
 
 ```bash
 FastExtractor input.log start_week start_sow end_week end_sow
 ```
 
+With NAV history:
+
+```bash
+FastExtractor --keep-nav input.log start_week start_sow end_week end_sow
+```
+
 ### Continuous GPST seconds, explicit output filename
+
+Default:
 
 ```bash
 FastExtractor input.log output.log start_sec end_sec
 ```
 
+With NAV history:
+
+```bash
+FastExtractor --keep-nav input.log output.log start_sec end_sec
+```
+
 ### Continuous GPST seconds, automatic output filename
+
+Default:
 
 ```bash
 FastExtractor input.log start_sec end_sec
+```
+
+With NAV history:
+
+```bash
+FastExtractor --keep-nav input.log start_sec end_sec
 ```
 
 In continuous-seconds mode, the GPS week of the first valid `RANGEA` **or** `OBSVMA` observation record is used as the base week. The input seconds may exceed one GPS week (`604800` seconds). Each whole `604800` seconds advances the resolved GPS week by one.
