@@ -1,3 +1,4 @@
+#include "BaseWeekDetector.h"
 #include "FastExtractByGPST.h"
 
 #include <cstdio>
@@ -239,6 +240,54 @@ static void testNoOverlapDoesNotCreateOutput()
     std::remove(output);
 }
 
+static void testBaseWeekSkipsZeroWeekObservations()
+{
+    const char* rangeInput = "fast_extractor_base_week_range.log";
+    const char* obsvmaInput = "fast_extractor_base_week_obsvma.log";
+    const char* invalidInput = "fast_extractor_base_week_invalid.log";
+    std::remove(rangeInput);
+    std::remove(obsvmaInput);
+    std::remove(invalidInput);
+
+    const std::string rangeData =
+        "#RANGEA,COM1,0,0,UNKNOWN,0,0.0;ZERO*00000000\n"
+        "#RANGEA,COM1,0,0,FINE,2300,10.0;VALID*00000000\n";
+    expect(writeFile(rangeInput, rangeData),
+           "write RANGEA base-week input");
+
+    int week = 0;
+    expect(detectBaseWeek(rangeInput, week),
+           "RANGEA base-week detection succeeds after week zero");
+    expect(week == 2300,
+           "RANGEA base-week detection skips week zero");
+
+    const std::string obsvmaData =
+        "#OBSVMA,94,GPS,UNKNOWN,0,0,0,0,18,1;ZERO*00000000\n"
+        "#OBSVMA,94,GPS,FINE,2301,10000,0,0,18,1;VALID*00000000\n";
+    expect(writeFile(obsvmaInput, obsvmaData),
+           "write OBSVMA base-week input");
+
+    week = 0;
+    expect(detectBaseWeek(obsvmaInput, week),
+           "OBSVMA base-week detection succeeds after week zero");
+    expect(week == 2301,
+           "OBSVMA base-week detection skips week zero");
+
+    const std::string invalidData =
+        "#RANGEA,COM1,0,0,UNKNOWN,0,0.0;ZERO*00000000\n"
+        "#OBSVMA,94,GPS,UNKNOWN,0,0,0,0,18,1;ZERO*00000000\n";
+    expect(writeFile(invalidInput, invalidData),
+           "write invalid base-week input");
+
+    week = 0;
+    expect(!detectBaseWeek(invalidInput, week),
+           "base-week detection rejects files containing only week zero");
+
+    std::remove(rangeInput);
+    std::remove(obsvmaInput);
+    std::remove(invalidInput);
+}
+
 int main()
 {
     testMixedObservationAndNavigation();
@@ -246,6 +295,7 @@ int main()
     testObsvmaOnly();
     testEqualBoundaryKeepsWholeEpoch();
     testNoOverlapDoesNotCreateOutput();
+    testBaseWeekSkipsZeroWeekObservations();
 
     if (failures != 0)
     {
