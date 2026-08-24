@@ -49,13 +49,15 @@ static bool detectBaseWeek(const char* input, int& baseWeek)
         return false;
 
     const char* data = nullptr;
-    size_t length = 0;
+    size_t prefixLength = 0;
     uint64_t offset = 0;
+    uint64_t rawLength = 0;
 
-    while (scanner.nextLine(data, length, offset))
+    while (scanner.nextLinePrefix(
+        data, prefixLength, offset, rawLength, 256))
     {
         GPST t{};
-        if (parseObservationTimeFast(data, length, t))
+        if (parseObservationTimeFast(data, prefixLength, t))
         {
             baseWeek = t.week;
             return true;

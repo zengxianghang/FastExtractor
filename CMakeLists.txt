@@ -32,4 +32,15 @@ if(BUILD_TESTING)
     )
     target_include_directories(ParserTests PRIVATE include)
     add_test(NAME ParserTests COMMAND ParserTests)
+
+    add_executable(ExtractionTests
+        tests/ExtractionTests.cpp
+        src/FastExtractByGPST.cpp
+        src/FastScanner.cpp
+        src/RangeParser.cpp
+        src/ObservationParser.cpp
+        src/SentenceClassifier.cpp
+    )
+    target_include_directories(ExtractionTests PRIVATE include)
+    add_test(NAME ExtractionTests COMMAND ExtractionTests)
 endif()
