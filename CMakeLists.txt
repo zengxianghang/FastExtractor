@@ -20,3 +20,16 @@ add_executable(FastExtractor
 )
 
 target_include_directories(FastExtractor PRIVATE include)
+
+include(CTest)
+
+if(BUILD_TESTING)
+    add_executable(ParserTests
+        tests/ParserTests.cpp
+        src/RangeParser.cpp
+        src/ObservationParser.cpp
+        src/SentenceClassifier.cpp
+    )
+    target_include_directories(ParserTests PRIVATE include)
+    add_test(NAME ParserTests COMMAND ParserTests)
+endif()
