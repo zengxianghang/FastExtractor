@@ -1,24 +1,23 @@
 #include "TailScanner.h"
+#include "ObservationParser.h"
+
 #include <fstream>
 #include <vector>
-#include <cstring>
 #include <cstdint>
 
-static bool findLastRange(const char* data, size_t size, GPST& t)
+static bool findLastObservation(const char* data, size_t size, GPST& t)
 {
-    if (size < 7)
+    if (!data || size == 0)
         return false;
 
-    for (size_t i = size - 7; ; --i)
+    for (size_t i = size; i > 0; --i)
     {
-        if (data[i] == '#' && std::memcmp(data + i, "#RANGEA", 7) == 0)
-        {
-            if (parseRangeTimeFast(data + i, size - i, t))
-                return true;
-        }
+        const size_t pos = i - 1;
+        if (data[pos] != '#')
+            continue;
 
-        if (i == 0)
-            break;
+        if (parseObservationTimeFast(data + pos, size - pos, t))
+            return true;
     }
 
     return false;
@@ -49,7 +48,7 @@ bool detectTailRange(const char* filename, FileTimeRange& range)
         fin.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
         const size_t got = static_cast<size_t>(fin.gcount());
 
-        if (findLastRange(buffer.data(), got, range.end))
+        if (findLastObservation(buffer.data(), got, range.end))
             return true;
 
         if (startPos == 0)
