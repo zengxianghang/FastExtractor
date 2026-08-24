@@ -17,6 +17,32 @@ static void expect(bool condition, const char* message)
     }
 }
 
+static void testRangeTime()
+{
+    const char* fine =
+        "#RANGEA,COM1,0,0,FINE,2300,117395.0;0";
+    GPST t{};
+
+    expect(parseObservationTimeFast(fine, std::strlen(fine), t),
+           "parse RANGEA FINE header");
+    expect(t.week == 2300, "RANGEA GPS week");
+    expect(std::fabs(t.sow - 117395.0) < 1e-9, "RANGEA SOW");
+
+    const char* coarse =
+        "#RANGEA,COM1,0,0,COARSE,2300,117395.0;0";
+    GPST coarseTime{};
+    expect(!parseObservationTimeFast(
+               coarse, std::strlen(coarse), coarseTime),
+           "reject RANGEA COARSE header");
+
+    const char* unknown =
+        "#RANGEA,COM1,0,0,UNKNOWN,2300,117395.0;0";
+    GPST unknownTime{};
+    expect(!parseObservationTimeFast(
+               unknown, std::strlen(unknown), unknownTime),
+           "reject RANGEA UNKNOWN header");
+}
+
 static void testObsvmaTime()
 {
     const char* fine =
@@ -28,16 +54,19 @@ static void testObsvmaTime()
     expect(t.week == 2190, "OBSVMA GPS week");
     expect(std::fabs(t.sow - 117395.0) < 1e-9, "OBSVMA milliseconds to SOW");
 
-    const char* nonFine =
+    const char* coarse =
         "#OBSVMA,94,GPS,COARSE,2190,117395000,0,0,18,17;18,0,26";
-    GPST nonFineTime{};
+    GPST coarseTime{};
+    expect(!parseObservationTimeFast(
+               coarse, std::strlen(coarse), coarseTime),
+           "reject OBSVMA COARSE header");
 
-    expect(parseObservationTimeFast(
-               nonFine, std::strlen(nonFine), nonFineTime),
-           "parse OBSVMA non-FINE header");
-    expect(nonFineTime.week == 2190, "non-FINE OBSVMA GPS week");
-    expect(std::fabs(nonFineTime.sow - 117395.0) < 1e-9,
-           "non-FINE OBSVMA SOW");
+    const char* unknown =
+        "#OBSVMA,94,GPS,UNKNOWN,2190,117395000,0,0,18,17;18,0,26";
+    GPST unknownTime{};
+    expect(!parseObservationTimeFast(
+               unknown, std::strlen(unknown), unknownTime),
+           "reject OBSVMA UNKNOWN header");
 }
 
 static void expectNavigation(const char* name)
@@ -109,6 +138,7 @@ static void testSentenceClassification()
 
 int main()
 {
+    testRangeTime();
     testObsvmaTime();
     testSentenceClassification();
 
