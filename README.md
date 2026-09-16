@@ -249,3 +249,16 @@ D:\data\test_2300_10.000_2301_10.000.log
 ```
 
 If the input file has no extension, the generated output file also has no extension.
+
+## Related GNSS tools
+
+This repository is part of a set of focused public GNSS engineering tools:
+
+- [`gnss-data-simulator`](https://github.com/zengxianghang/gnss-data-simulator) — deterministic GNSS receiver-data simulation and RTKLIB-based validation.
+- [`gnss-data-parser`](https://github.com/zengxianghang/gnss-data-parser) — streaming Python/MATLAB parsing and cross-language validation for receiver logs.
+- [`LogMerger`](https://github.com/zengxianghang/LogMerger) — time-ordered GNSS log merging for NovAtel/Unicore data.
+- [`RTKLIB`](https://github.com/zengxianghang/RTKLIB) — the RTKLIB fork used by simulator integration and validation work.
+
+## License
+
+FastExtractor is licensed under the [MIT License](LICENSE).
