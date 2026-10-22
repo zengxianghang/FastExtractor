@@ -142,6 +142,61 @@ static void testNoNavFastPath()
     std::remove(output);
 }
 
+static void testGpsCnavRetentionModes()
+{
+    const char* input = "fast_extractor_gpscnav_input.log";
+    const char* output = "fast_extractor_gpscnav_output.log";
+    std::remove(input);
+    std::remove(output);
+
+    // GPSEPH and both GPSCNAVEPH spellings receive the same NAV treatment.
+    const std::string cnavBare =
+        "#GPSCNAVEPH,94,GPS,COARSE,2300,40000,0,0,18,1;CNAV_BARE*00000000\r\n";
+    const std::string legacy =
+        "#GPSEPHA,94,GPS,FINE,2300,41000,0,0,18,1;LEGACY*00000000\r\n";
+    const std::string cnavAscii =
+        "#GPSCNAVEPHA,94,GPS,UNKNOWN,2300,42000,0,0,18,1;CNAV_A*00000000\r\n";
+    const std::string unknown =
+        "#GPSCNAVEPH_EXTRA,94,GPS,FINE,2300,43000,0,0,18,1;UNKNOWN*00000000\r\n";
+    const std::string obs99 =
+        "#RANGEA,COM1,0,0,FINE,2300,99.0;OBS99*00000000\r\n";
+    const std::string cnavWindow =
+        "#GPSCNAVEPHA,94,GPS,FINE,2300,99500,0,0,18,1;IN_WINDOW*00000000\r\n";
+    const std::string obs100 =
+        "#OBSVMA,94,GPS,FINE,2300,100000,0,0,18,1;OBS100*00000000\r\n";
+    const std::string obs101 =
+        "#RANGEA,COM1,0,0,FINE,2300,101.0;OBS101*00000000\r\n";
+    const std::string trailing =
+        "#BESTPOSA,COM1,0,0,FINE,2300,101.2;TRAIL*00000000\r\n";
+    const std::string obs102 =
+        "#RANGEA,COM1,0,0,FINE,2300,102.0;OBS102*00000000\r\n";
+
+    expect(writeFile(input, cnavBare + legacy + cnavAscii + unknown +
+                            obs99 + cnavWindow + obs100 + obs101 +
+                            trailing + obs102),
+           "write GPSCNAVEPH extraction input");
+
+    const GPST start{2300, 99.5};
+    const GPST end{2300, 100.5};
+    const std::string window = obs99 + cnavWindow + obs100 + obs101 + trailing;
+
+    expect(fastExtractByGPST(input, output, start, end) == 0,
+           "GPSCNAVEPH keep-NAV extraction succeeds");
+    expect(readFile(output) == cnavBare + legacy + cnavAscii + window,
+           "keep-NAV retains both pre-start CNAV variants and GPSEPH, "
+           "including non-FINE status, excludes unknown prefixes, "
+           "and preserves CRLF and raw window ordering");
+
+    std::remove(output);
+    expect(fastExtractByGPSTNoNav(input, output, start, end) == 0,
+           "GPSCNAVEPH default extraction succeeds");
+    expect(readFile(output) == window,
+           "default mode omits pre-start CNAV and GPSEPH but keeps CNAV in window");
+
+    std::remove(input);
+    std::remove(output);
+}
+
 static void testObsvmaOnly()
 {
     const char* input = "fast_extractor_obsvma_input.log";
@@ -403,6 +458,7 @@ int main()
 {
     testMixedObservationAndNavigation();
     testNoNavFastPath();
+    testGpsCnavRetentionModes();
     testObsvmaOnly();
     testEqualBoundaryKeepsWholeEpoch();
     testNoOverlapDoesNotCreateOutput();

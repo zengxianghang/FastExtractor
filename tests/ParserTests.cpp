@@ -118,6 +118,7 @@ static void testSentenceClassification()
         "BDSION",
         "GALION",
         "GPSEPH",
+        "GPSCNAVEPH",
         "QZSSEPH",
         "BD3EPH",
         "BDSEPH",
@@ -134,6 +135,11 @@ static void testSentenceClassification()
         asciiName += 'A';
         expectNavigation(asciiName.c_str());
     }
+
+    const char* cnavUnknown = "#GPSCNAVEPH_EXTRA,DUMMY";
+    expect(classifySentence(cnavUnknown, std::strlen(cnavUnknown)) ==
+               SentenceClass::UNKNOWN,
+           "GPSCNAVEPH prefix matches must not classify as navigation");
 }
 
 int main()

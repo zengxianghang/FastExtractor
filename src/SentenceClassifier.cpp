@@ -54,6 +54,8 @@ SentenceClass classifySentence(const char* data, size_t length)
             tokenIs(token, tokenLength, "GPSIONA") ||
             tokenIs(token, tokenLength, "GPSEPH") ||
             tokenIs(token, tokenLength, "GPSEPHA") ||
+            tokenIs(token, tokenLength, "GPSCNAVEPH") ||
+            tokenIs(token, tokenLength, "GPSCNAVEPHA") ||
             tokenIs(token, tokenLength, "GLOEPH") ||
             tokenIs(token, tokenLength, "GLOEPHA") ||
             tokenIs(token, tokenLength, "GALEPH") ||

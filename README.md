@@ -79,13 +79,14 @@ Supported NovAtel OEM7 navigation records:
 - `IONUTCA`
 - `BD2IONUTCA`
 
-Supported Unicore N4 navigation records (ASCII log records normally carry the trailing `A`, e.g. `GPSEPHA`):
+Supported Unicore N4 navigation records (ASCII log records normally carry the trailing `A`, e.g. `GPSEPHA` or `GPSCNAVEPHA`):
 
 - `GPSION`
 - `BD3ION`
 - `BDSION`
 - `GALION`
 - `GPSEPH`
+- `GPSCNAVEPH`
 - `QZSSEPH`
 - `BD3EPH`
 - `BDSEPH`
