@@ -3,8 +3,12 @@
 
 #include <cstdio>
 #include <fstream>
+#include <iostream>
 #include <sstream>
 #include <string>
+
+int extractRange(
+    const char*, const char*, const GPST&, const GPST&, bool keepNavigation);
 
 static int failures = 0;
 
@@ -325,6 +329,76 @@ static void testBaseWeekRequiresFineObservation()
     std::remove(invalidInput);
 }
 
+static void testNoOverlapDiagnosticsBothModes()
+{
+    const char* input = "fast_extractor_diagnostic_input.log";
+    const char* output = "fast_extractor_diagnostic_output.log";
+    std::remove(input);
+    std::remove(output);
+
+    const std::string data =
+        "#GPSEPHEMA,97,GPS,FINE,2300,5000,0,0,18,1;NAV*00000000\n"
+        "#OBSVMA,94,GPS,FINE,2300,10000,0,0,18,1;O10*00000000\n"
+        "#RANGEA,COM1,0,0,FINE,2300,11.0;O11*00000000\n"
+        "#RANGEA,COM1,0,0,FINE,2300,12.0;O12*00000000\n";
+    expect(writeFile(input, data), "write diagnostic input");
+
+    struct Scenario
+    {
+        GPST start;
+        GPST end;
+        const char* expectedRequest;
+    };
+
+    const Scenario scenarios[] = {
+        {{2300, 1.0}, {2300, 2.0}, "2300 1.000 ~ 2300 2.000"},
+        {{2300, 20.0}, {2300, 21.0}, "2300 20.000 ~ 2300 21.000"}
+    };
+
+    for (int mode = 0; mode < 2; ++mode)
+    {
+        const bool keepNavigation = mode != 0;
+        for (const Scenario& scenario : scenarios)
+        {
+            std::remove(output);
+            std::ostringstream captured;
+            std::streambuf* previous = std::cerr.rdbuf(captured.rdbuf());
+            const int result = extractRange(
+                input, output, scenario.start, scenario.end, keepNavigation);
+            std::cerr.rdbuf(previous);
+
+            expect(result == -3, "no overlap returns -3 in both modes");
+            expect(!fileExists(output), "no overlap does not create a file");
+
+            const std::string diagnostic = captured.str();
+            expect(diagnostic.find("[ERROR] Requested GPST range does not overlap") !=
+                   std::string::npos, "diagnostic explains no overlap");
+            expect(diagnostic.find("2300 10.000 ~ 2300 12.000") !=
+                   std::string::npos, "diagnostic shows input observation range");
+            expect(diagnostic.find(scenario.expectedRequest) !=
+                   std::string::npos, "diagnostic shows requested range");
+            expect(diagnostic.find("No output file was created or modified.") !=
+                   std::string::npos, "diagnostic describes output behavior");
+        }
+
+        const std::string original = "EXISTING_OUTPUT_MUST_BE_PRESERVED\n";
+        expect(writeFile(output, original), "write preexisting output");
+        std::ostringstream captured;
+        std::streambuf* previous = std::cerr.rdbuf(captured.rdbuf());
+        const int result = extractRange(
+            input, output, scenarios[0].start, scenarios[0].end,
+            keepNavigation);
+        std::cerr.rdbuf(previous);
+
+        expect(result == -3, "preexisting output and no overlap returns -3");
+        expect(readFile(output) == original,
+               "preexisting output remains unchanged after no overlap");
+    }
+
+    std::remove(input);
+    std::remove(output);
+}
+
 int main()
 {
     testMixedObservationAndNavigation();
@@ -332,6 +406,7 @@ int main()
     testObsvmaOnly();
     testEqualBoundaryKeepsWholeEpoch();
     testNoOverlapDoesNotCreateOutput();
+    testNoOverlapDiagnosticsBothModes();
     testNonFineObservationsDoNotDefineBounds();
     testBaseWeekRequiresFineObservation();
 
