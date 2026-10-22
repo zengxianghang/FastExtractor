@@ -37,6 +37,7 @@ if(BUILD_TESTING)
 
     add_executable(ExtractionTests
         tests/ExtractionTests.cpp
+        src/Extractor.cpp
         src/BaseWeekDetector.cpp
         src/FastExtractByGPST.cpp
         src/FastExtractNoNav.cpp

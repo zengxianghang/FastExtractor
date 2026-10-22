@@ -122,6 +122,26 @@ week = 2190
 sow  = 117395.000
 ```
 
+## No-overlap diagnostics
+
+If the requested GPST window does not overlap the input file's `RANGEA` / `OBSVMA`
+observation time range, extraction fails with exit code `-3` in both the default
+mode and `--keep-nav` mode. An error on stderr shows the observed input range
+and the resolved requested range (GPS week and seconds-of-week).
+
+For example:
+
+```text
+[ERROR] Requested GPST range does not overlap the input observation range.
+Input observation range: 2430 100000.000 ~ 2430 110000.000
+Requested range:       2430 90000.000 ~ 2430 95000.000
+No output file was created or modified.
+```
+
+No output file is created for a no-overlap request; an already-existing output
+file is left untouched. This error-only diagnostic does not change the
+outward-boundary selection rules or add work to successful extractions.
+
 ## Build and test
 
 Use the same Release configuration used by CI:
